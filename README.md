@@ -75,5 +75,4 @@ sudo ./script/register-service.sh --run-user <账号>
 | `test/` | 单元与集成测试代码 | ✅ |
 | `config.example.json`、`go.mod`、`go.sum`、`README.md` | 配置样例与元数据 | ✅ |
 | `runtime/judge-rootfs` | 判题 RootFS | ❌ 本地准备 |
-| `testdata/` | 本地测试题库 | ❌ 仅本地测试 |
-| `bin/`、`work/`、`release/`、`test/results/`、`config.json` | 构建/运行产物 | ❌ |
+
