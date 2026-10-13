@@ -1,0 +1,8 @@
+/runtime/
+/testdata/
+/config.json
+/bin/
+/release/
+/work/
+/test/results/
+/test/manual/.work/
