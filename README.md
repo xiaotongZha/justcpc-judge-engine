@@ -70,9 +70,9 @@ sudo ./script/register-service.sh --run-user <账号>
 
 | 路径 | 内容 | 是否入库 |
 |---|---|---|
-| `src/` | 引擎本体代码 | ✅ |
+| `src/` | 仅引擎运行代码，不放测试代码或测试脚本 | ✅ |
 | `script/` | 构建/运行/注册服务脚本 | ✅ |
-| `test/` | 单元与集成测试代码 | ✅ |
+| `test/` | 本地测试代码与脚本 | ❌ 本地保留，不入库 |
 | `config.example.json`、`go.mod`、`go.sum`、`README.md` | 配置样例与元数据 | ✅ |
 | `runtime/judge-rootfs` | 判题 RootFS | ❌ 本地准备 |
 
