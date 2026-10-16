@@ -2,6 +2,8 @@
 
 面向**赛后统一评测**的 Linux 判题服务。接收「源码 + 语言 + 测试点 + 资源限制」，完成**编译 → 逐测试点执行 → 输出比对**，返回 `AC / WA / TLE / MLE / CE / RE / SYS`。
 
+**发行版构建、部署：[DEPLOY.md](DEPLOY.md)。** 下文为源码开发与实现说明。
+
 - 自行实现沙盒：user/mount/pid/net/uts/ipc/cgroup 命名空间 + 只读运行库挂载 + cgroup v2 资源限制与统计 + seccomp 白名单。
 - 同步接口：`POST /api/execute`，一次请求返回编译信息与逐点结果。
 - 无任务队列：异步、重试、结果持久化由 Online Judge 的 dispatcher 负责；本引擎只限制并发执行数。
