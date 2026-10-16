@@ -1,8 +1,7 @@
 {
   "listen": "127.0.0.1:18080",
-  "rootfs": "runtime/judge-rootfs",
-  "problem_root": "testdata",
+  "rootfs": "",
   "work_root": "/tmp/justcpc-judge-engine",
   "cgroup_root": "",
-  "workers": 10
+  "workers": 0
 }

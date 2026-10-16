@@ -12,19 +12,27 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const initFailureExitCode = 253
-
 func init() {
 	if len(os.Args) == 2 && os.Args[1] == initArgument {
+		// Successful exec closes the error pipe; contestant exit codes are never
+		// used as a substitute for this separate initialization protocol.
+		unix.CloseOnExec(initErrorFD)
 		if err := runInit(); err != nil {
+			message := err.Error()
+			if len(message) > maxInitErrorBytes {
+				message = message[:maxInitErrorBytes]
+			}
+			_, _ = unix.Write(initErrorFD, []byte(message))
 			fmt.Fprintf(os.Stderr, "justcpc sandbox init: %v\n", err)
-			os.Exit(initFailureExitCode)
+			os.Exit(1)
 		}
 		os.Exit(0)
 	}
 }
 
 func runInit() error {
+	unix.CloseOnExec(3)
+	unix.CloseOnExec(4)
 	configFile := os.NewFile(uintptr(3), "sandbox-config")
 	if configFile == nil {
 		return fmt.Errorf("missing configuration fd")
@@ -33,6 +41,9 @@ func runInit() error {
 	var config initConfig
 	if err := json.NewDecoder(configFile).Decode(&config); err != nil {
 		return fmt.Errorf("decode configuration: %w", err)
+	}
+	if err := configFile.Close(); err != nil {
+		return fmt.Errorf("close configuration fd: %w", err)
 	}
 	if err := initializeFileSystem(config); err != nil {
 		return err
@@ -46,6 +57,9 @@ func runInit() error {
 	if _, err := startFile.Read(marker[:]); err != nil {
 		return fmt.Errorf("wait for cgroup setup: %w", err)
 	}
+	if err := startFile.Close(); err != nil {
+		return fmt.Errorf("close start fd: %w", err)
+	}
 	if err := applyRlimits(config.Limit); err != nil {
 		return fmt.Errorf("apply rlimits: %w", err)
 	}
@@ -55,15 +69,15 @@ func runInit() error {
 	if err := dropPrivileges(); err != nil {
 		return fmt.Errorf("drop capabilities: %w", err)
 	}
-	if err := applySeccomp(config.Profile); err != nil {
-		return fmt.Errorf("apply seccomp: %w", err)
-	}
 	path, err := resolveExecutable(config.Args[0])
 	if err != nil {
 		return err
 	}
 	env := []string{"PATH=/usr/bin:/bin", "HOME=/w", "TMPDIR=/tmp", "LANG=C.UTF-8"}
 	env = append(env, config.Env...)
+	if err := applySeccomp(config.Profile); err != nil {
+		return fmt.Errorf("apply seccomp: %w", err)
+	}
 	return syscall.Exec(path, config.Args, env)
 }
 
@@ -105,43 +119,8 @@ func initializeFileSystem(config initConfig) error {
 	if err := unix.Mount("tmpfs", config.SandboxRoot, "tmpfs", 0, "mode=0755,size=64m"); err != nil {
 		return fmt.Errorf("mount container root: %w", err)
 	}
-	entries, err := os.ReadDir(config.RootFS)
-	if err != nil {
-		return fmt.Errorf("read RootFS: %w", err)
-	}
-	for _, entry := range entries {
-		name := entry.Name()
-		if name == "dev" || name == "proc" || name == "sys" || name == "tmp" || name == "w" {
-			continue
-		}
-		source := filepath.Join(config.RootFS, name)
-		target := filepath.Join(config.SandboxRoot, name)
-		info, err := entry.Info()
-		if err != nil {
-			return fmt.Errorf("stat RootFS entry %s: %w", name, err)
-		}
-		switch {
-		case info.IsDir():
-			if err := os.MkdirAll(target, 0755); err != nil {
-				return err
-			}
-			if err := unix.Mount(source, target, "", unix.MS_BIND|unix.MS_REC, ""); err != nil {
-				return fmt.Errorf("bind RootFS entry %s: %w", name, err)
-			}
-			if err := remountReadOnly(target); err != nil {
-				return fmt.Errorf("remount RootFS entry %s readonly: %w", name, err)
-			}
-		case info.Mode()&os.ModeSymlink != 0:
-			link, err := os.Readlink(source)
-			if err != nil {
-				return err
-			}
-			if err := os.Symlink(link, target); err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("unsupported RootFS top-level entry %s", name)
-		}
+	if err := mountRuntime(config.SandboxRoot, config.RootFS); err != nil {
+		return err
 	}
 	if err := os.MkdirAll(filepath.Join(config.SandboxRoot, "w"), 0755); err != nil {
 		return err
@@ -253,5 +232,5 @@ func resolveExecutable(command string) (string, error) {
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("executable %q not found in RootFS", command)
+	return "", fmt.Errorf("executable %q not found in sandbox runtime", command)
 }

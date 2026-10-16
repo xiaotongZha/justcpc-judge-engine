@@ -18,6 +18,8 @@ const (
 // creation. Java needs socket syscalls for local JVM communication; the
 // separate network namespace, rather than seccomp, keeps tasks off the host
 // network. Neither profile permits ptrace.
+// Host toolchains also need connect (42), statfs (137), clock_nanosleep (230)
+// and clone3 (435) for current JVM/glibc startup and thread management.
 func applySeccomp(profile Profile) error {
 	syscalls := runtimeSyscalls
 	if profile == ProfileCompile {
@@ -44,18 +46,20 @@ func applySeccomp(profile Profile) error {
 	return nil
 }
 
-// Linux amd64 syscall numbers. The delivered RootFS is amd64, so accepting a
+// Linux amd64 syscall numbers. The sandbox supports amd64, so accepting a
 // different architecture is a deployment error rather than silently running a
 // mismatched policy.
 var runtimeSyscalls = []uint32{
 	0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 21, 24, 25, 28,
-	32, 33, 35, 39, 41, 51, 53, 54, 56, 59, 60, 63, 72, 73, 77, 79, 80, 81, 83, 87, 89, 97, 98, 99, 102, 104, 107,
-	108, 110, 111, 131, 157, 158, 186, 202, 204, 217, 218, 228, 229, 231, 234, 257, 262,
-	273, 281, 293, 302, 318, 324, 332, 334,
+	32, 33, 35, 39, 41, 42, 51, 53, 54, 56, 59, 60, 63, 72, 73, 77, 79, 80, 81, 83, 87, 89, 97, 98, 99, 102, 104, 107,
+	108, 110, 111, 131, 137, 157, 158, 186, 202, 204, 217, 218, 228, 229, 230, 231, 234, 257, 262,
+	267, 273, 281, 293, 302, 318, 324, 332, 334,
+	435, // clone3: thread creation in current glibc/JVMs.
 }
 
 var compileOnlySyscalls = []uint32{
 	2, 4, 6, 18, 22, 52, 56, 57, 58, 59, 61, 62, 80, 82, 83, 84, 87, 88, 90,
 	95, 98, 99, 111, 133, 137, 217,
 	258, 259, 260, 263, 264, 266, 267, 268, 269, 270, 271, 272, 276, 280,
+	439, // faccessat2: permission checks used by current glibc/GCC.
 }

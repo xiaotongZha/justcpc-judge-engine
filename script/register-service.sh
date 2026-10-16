@@ -4,7 +4,7 @@ set -euo pipefail
 service_name="justcpc-judge-engine"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_dir="$(cd -- "$script_dir/.." && pwd)"
-release_dir="$project_dir/release/justcpc-judge-engine"
+release_dir="$project_dir"
 run_user="${SUDO_USER:-}"
 start_service=1
 
@@ -13,7 +13,8 @@ usage() {
 Usage: sudo ./script/register-service.sh [options]
 
 Options:
-  --release-dir PATH  Release directory to register.
+  --release-dir PATH  Directory containing bin/ and config.json.
+                      Defaults to the project directory.
   --run-user USER     Linux account that runs the engine. Defaults to the
                       account that invoked sudo.
   --no-start           Register and enable the service without starting it.
@@ -24,10 +25,12 @@ EOF
 while (($#)); do
     case "$1" in
         --release-dir)
+            [[ $# -ge 2 && -n "$2" ]] || { printf 'Missing --release-dir value.\n' >&2; exit 2; }
             release_dir="$2"
             shift 2
             ;;
         --run-user)
+            [[ $# -ge 2 && -n "$2" ]] || { printf 'Missing --run-user value.\n' >&2; exit 2; }
             run_user="$2"
             shift 2
             ;;
@@ -63,6 +66,10 @@ if [[ ! -d /run/systemd/system ]] || ! command -v systemctl >/dev/null 2>&1; the
     printf 'This host is not running systemd; service registration is unavailable.\n' >&2
     exit 1
 fi
+if [[ ! -f /sys/fs/cgroup/cgroup.controllers ]]; then
+    printf 'This host must use cgroup v2.\n' >&2
+    exit 1
+fi
 
 release_dir="$(cd -- "$release_dir" && pwd)"
 binary="$release_dir/bin/$service_name"
@@ -76,6 +83,9 @@ if [[ "$release_dir" =~ [[:space:]] ]] || [[ "$binary" =~ [[:space:]] ]]; then
 fi
 
 run_group="$(id -gn "$run_user")"
+# System-service execution uses the same host namespace policy as local runs.
+# Install it before enabling or starting the unit; --no-start stays non-starting.
+"$script_dir/setup-apparmor.sh" --binary "$binary"
 unit_path="/etc/systemd/system/$service_name.service"
 unit_tmp="$(mktemp)"
 trap 'rm -f "$unit_tmp"' EXIT

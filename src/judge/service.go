@@ -13,28 +13,30 @@ import (
 
 type Engine struct {
 	runner     Runner
-	repository ProblemRepository
 	compiler   Compiler
 	comparator Comparator
 }
 
-func NewEngine(runner Runner, repository ProblemRepository, compiler Compiler, comparator Comparator) *Engine {
+func NewEngine(runner Runner, compiler Compiler, comparator Comparator) *Engine {
 	if compiler == nil {
 		compiler = NewCompiler(runner)
 	}
 	if comparator == nil {
 		comparator = NewComparator()
 	}
-	return &Engine{runner: runner, repository: repository, compiler: compiler, comparator: comparator}
+	return &Engine{runner: runner, compiler: compiler, comparator: comparator}
 }
 
 func (e *Engine) Judge(ctx context.Context, task JudgeTask) (Response, error) {
 	if err := validateTask(task); err != nil {
 		return Response{}, err
 	}
-	problem, err := e.loadProblem(ctx, task)
-	if err != nil {
-		return Response{}, err
+	problem := *task.Problem
+	if problem.ID == "" {
+		problem.ID = task.ProblemID
+	}
+	if problem.ID != task.ProblemID {
+		return Response{}, fmt.Errorf("task problem ID %q does not match metadata ID %q", task.ProblemID, problem.ID)
 	}
 	if err := validateProblem(problem, task.Language); err != nil {
 		return Response{}, err
@@ -118,27 +120,6 @@ func (e *Engine) Judge(ctx context.Context, task JudgeTask) (Response, error) {
 	return response, nil
 }
 
-func (e *Engine) loadProblem(ctx context.Context, task JudgeTask) (Problem, error) {
-	if task.Problem != nil {
-		problem := *task.Problem
-		if problem.ID == "" {
-			problem.ID = task.ProblemID
-		}
-		if problem.ID != task.ProblemID {
-			return Problem{}, fmt.Errorf("task problem ID %q does not match metadata ID %q", task.ProblemID, problem.ID)
-		}
-		return problem, nil
-	}
-	if e.repository == nil {
-		return Problem{}, fmt.Errorf("problem repository is required")
-	}
-	problem, err := e.repository.Load(ctx, task.ProblemID)
-	if err != nil {
-		return Problem{}, fmt.Errorf("load problem %q: %w", task.ProblemID, err)
-	}
-	return problem, nil
-}
-
 func runtimeArgs(language Language, args []string, limit sandbox.Limit) []string {
 	if language != LanguageJava || len(args) == 0 {
 		return args
@@ -189,6 +170,9 @@ func truncateDiagnostic(value []byte) string {
 func validateTask(task JudgeTask) error {
 	if task.ProblemID == "" {
 		return fmt.Errorf("problem_id is required")
+	}
+	if task.Problem == nil {
+		return fmt.Errorf("problem is required")
 	}
 	if task.Language != LanguageCPP && task.Language != LanguageJava && task.Language != LanguagePython3 {
 		return fmt.Errorf("language must be cpp, java, or python3")

@@ -28,12 +28,6 @@ type Service interface {
 	Judge(context.Context, JudgeTask) (Response, error)
 }
 
-// ProblemRepository isolates judging from the deployed problem store.
-// Implementations return paths to test data rather than loading all cases.
-type ProblemRepository interface {
-	Load(context.Context, string) (Problem, error)
-}
-
 type Submission struct {
 	Language Language
 	Source   string

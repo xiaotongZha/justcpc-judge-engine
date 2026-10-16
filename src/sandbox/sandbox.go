@@ -1,4 +1,4 @@
-// Package sandbox runs one command inside the judge RootFS.
+// Package sandbox builds a small Linux container for each judge command.
 package sandbox
 
 import (
@@ -116,6 +116,8 @@ type Result struct {
 // Config identifies deployment-owned resources. CgroupRoot must be a
 // delegated cgroup v2 directory, not the global cgroup root.
 type Config struct {
+	// RootFS is optional. Empty uses selected host toolchain/runtime paths as
+	// read-only mounts; a non-empty path selects a deployment-owned runtime.
 	RootFS     string
 	WorkRoot   string
 	CgroupRoot string
@@ -129,19 +131,19 @@ type Sandbox struct {
 }
 
 func New(config Config) (*Sandbox, error) {
-	if config.RootFS == "" {
-		return nil, fmt.Errorf("sandbox: RootFS is required")
-	}
-	rootFS, err := filepath.Abs(config.RootFS)
-	if err != nil {
-		return nil, fmt.Errorf("sandbox: resolve RootFS: %w", err)
-	}
-	info, err := os.Stat(rootFS)
-	if err != nil {
-		return nil, fmt.Errorf("sandbox: RootFS: %w", err)
-	}
-	if !info.IsDir() {
-		return nil, fmt.Errorf("sandbox: RootFS is not a directory: %s", rootFS)
+	if config.RootFS != "" {
+		rootFS, err := filepath.Abs(config.RootFS)
+		if err != nil {
+			return nil, fmt.Errorf("sandbox: resolve RootFS: %w", err)
+		}
+		info, err := os.Stat(rootFS)
+		if err != nil {
+			return nil, fmt.Errorf("sandbox: RootFS: %w", err)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("sandbox: RootFS is not a directory: %s", rootFS)
+		}
+		config.RootFS = rootFS
 	}
 	if config.WorkRoot == "" {
 		config.WorkRoot = os.TempDir()
@@ -156,7 +158,6 @@ func New(config Config) (*Sandbox, error) {
 	if config.CgroupRoot == "" && !config.AllowNoCgroupForTest {
 		return nil, fmt.Errorf("sandbox: CgroupRoot is required for production execution")
 	}
-	config.RootFS = rootFS
 	config.WorkRoot = workRoot
 	return &Sandbox{config: config}, nil
 }

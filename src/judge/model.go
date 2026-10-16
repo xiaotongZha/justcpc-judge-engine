@@ -55,16 +55,13 @@ type Problem struct {
 	Cases              []TestCase                 `json:"cases"`
 }
 
-// JudgeTask is the payload retained by the in-process queue. It deliberately
-// contains no test input or expected output.
+// JudgeTask carries OJ-supplied metadata and test file paths, never test data.
 type JudgeTask struct {
 	ProblemID string   `json:"problem_id"`
 	Language  Language `json:"language"`
 	Source    string   `json:"source"`
-	// Problem optionally supplies the deployment-owned problem metadata for this
-	// execution. It contains only resource limits and local test file paths.
-	// When omitted, the engine loads metadata from its configured repository.
-	Problem *Problem `json:"problem,omitempty"`
+	// Problem is required and supplies resource limits and test file paths.
+	Problem   *Problem `json:"problem"`
 	Submitter string   `json:"submitter,omitempty"`
 	// OutputDir is an absolute, business-owned directory for this submission's
 	// per-test stdout files.

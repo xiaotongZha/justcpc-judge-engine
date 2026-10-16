@@ -5,16 +5,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"syscall"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
-const initArgument = "--justcpc-sandbox-init"
+const (
+	initArgument      = "--justcpc-sandbox-init"
+	initErrorFD       = 5
+	maxInitErrorBytes = 4096
+)
 
 type initConfig struct {
 	RootFS      string
@@ -124,6 +127,13 @@ func (s *Sandbox) Run(ctx context.Context, task Task) Result {
 		startWriter.Close()
 		return Result{Status: StatusSystemError, Error: fmt.Sprintf("find executable: %v", err)}
 	}
+	initErrorReader, initErrorWriter, err := os.Pipe()
+	if err != nil {
+		startWriter.Close()
+		return Result{Status: StatusSystemError, Error: fmt.Sprintf("create init error pipe: %v", err)}
+	}
+	defer initErrorReader.Close()
+	defer initErrorWriter.Close()
 	command := exec.Command(executable, initArgument)
 	command.Stdin = stdin
 	if stdoutFile != nil {
@@ -132,20 +142,15 @@ func (s *Sandbox) Run(ctx context.Context, task Task) Result {
 		command.Stdout = stdoutWriter
 	}
 	command.Stderr = stderrWriter
-	command.ExtraFiles = []*os.File{configReader, startReader}
-	command.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags:                 unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWNET | unix.CLONE_NEWUTS | unix.CLONE_NEWIPC | unix.CLONE_NEWCGROUP,
-		UidMappings:                []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Geteuid(), Size: 1}},
-		GidMappings:                []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getegid(), Size: 1}},
-		GidMappingsEnableSetgroups: false,
-		Pdeathsig:                  syscall.SIGKILL,
-	}
+	command.ExtraFiles = []*os.File{configReader, startReader, initErrorWriter}
+	command.SysProcAttr = namespaceAttributes()
 
 	started := time.Now()
 	if err := command.Start(); err != nil {
 		startWriter.Close()
 		return Result{Status: StatusSystemError, Error: fmt.Sprintf("start container: %v", err)}
 	}
+	_ = initErrorWriter.Close()
 	// Close the parent copies. The collectors now see EOF as soon as the
 	// container process closes its inherited standard streams.
 	if stdoutWriter != nil {
@@ -178,6 +183,17 @@ func (s *Sandbox) Run(ctx context.Context, task Task) Result {
 		result.Stdout = stdoutCollector.result()
 	}
 	result.Stderr = stderrCollector.result()
+	initError, err := io.ReadAll(io.LimitReader(initErrorReader, maxInitErrorBytes))
+	if err != nil {
+		result.Status = StatusSystemError
+		result.Error = fmt.Sprintf("read init error: %v", err)
+		return result
+	}
+	if len(initError) > 0 {
+		result.Status = StatusSystemError
+		result.Error = "sandbox init failed: " + string(initError)
+		return result
+	}
 	if result.Status == StatusNormal {
 		files, err := collectTaskFiles(workDir, task.CollectPaths, limit.ArtifactSize)
 		if err != nil {
@@ -347,6 +363,8 @@ func waitForTask(
 
 	ticker := time.NewTicker(20 * time.Millisecond)
 	defer ticker.Stop()
+	stdoutExceeded := outputExceededChannel(stdout)
+	stderrExceeded := outputExceededChannel(stderr)
 	var wallExceeded, cpuExceeded, outputExceeded bool
 	for {
 		select {
@@ -359,15 +377,13 @@ func waitForTask(
 			result.Status = StatusSystemError
 			result.Error = fmt.Sprintf("execution cancelled: %v", ctx.Err())
 			return result
-		case <-outputExceededChannel(stdout):
+		case <-stdoutExceeded:
 			outputExceeded = true
-			if stdout != nil {
-				stdout.exceeded = nil
-			}
+			stdoutExceeded = nil
 			_ = command.Process.Kill()
-		case <-stderr.exceeded:
+		case <-stderrExceeded:
 			outputExceeded = true
-			stderr.exceeded = nil
+			stderrExceeded = nil
 			_ = command.Process.Kill()
 		case <-ticker.C:
 			if stdoutFileReachedLimit(stdoutFile, limit.OutputSize) {
@@ -462,11 +478,6 @@ func completedResult(command *exec.Cmd, cg *taskCgroup, started time.Time, waitE
 		return result
 	}
 	if status.Exited() {
-		if status.ExitStatus() == initFailureExitCode {
-			result.Status = StatusSystemError
-			result.Error = "sandbox init failed"
-			return result
-		}
 		result.Status = StatusNonzeroExit
 		result.ExitCode = status.ExitStatus()
 		return result

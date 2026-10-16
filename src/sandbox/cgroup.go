@@ -45,7 +45,7 @@ func CurrentCgroupRoot() (string, error) {
 func PrepareCgroupRoot(root string) error {
 	root = filepath.Clean(root)
 	if root == "/sys/fs/cgroup" {
-		return fmt.Errorf("refuse host cgroup root; run under a delegated service or set -cgroup-root")
+		return fmt.Errorf("refuse host cgroup root; run under a delegated service or configure cgroup_root")
 	}
 	current, err := CurrentCgroupRoot()
 	if err != nil {
