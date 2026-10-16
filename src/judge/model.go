@@ -77,16 +77,18 @@ type CompileResult struct {
 }
 
 type CaseResult struct {
-	ID            string  `json:"id"`
-	Verdict       Verdict `json:"verdict"`
-	SandboxStatus string  `json:"sandbox_status"`
-	TimeMS        int64   `json:"time_ms"`
-	WallTimeMS    int64   `json:"wall_time_ms"`
-	Memory        uint64  `json:"memory"`
-	ProcessPeak   uint64  `json:"process_peak"`
-	OutputPath    string  `json:"output_path,omitempty"`
-	Stderr        string  `json:"stderr"`
-	Error         string  `json:"error"`
+	ID                   string  `json:"id"`
+	Verdict              Verdict `json:"verdict"`
+	SandboxStatus        string  `json:"sandbox_status"`
+	TimeMS               int64   `json:"time_ms"`
+	WallTimeMS           int64   `json:"wall_time_ms"`
+	Memory               uint64  `json:"memory"`
+	ProcessPeak          uint64  `json:"process_peak"`
+	MemoryEstimated      bool    `json:"memory_estimated,omitempty"`
+	ProcessPeakEstimated bool    `json:"process_peak_estimated,omitempty"`
+	OutputPath           string  `json:"output_path,omitempty"`
+	Stderr               string  `json:"stderr"`
+	Error                string  `json:"error"`
 }
 
 type Response struct {

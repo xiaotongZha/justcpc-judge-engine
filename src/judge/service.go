@@ -134,14 +134,16 @@ func runtimeArgs(language Language, args []string, limit sandbox.Limit) []string
 
 func caseFromSandbox(id string, result sandbox.Result) CaseResult {
 	caseResult := CaseResult{
-		ID:            id,
-		SandboxStatus: string(result.Status),
-		TimeMS:        result.CPUTime.Milliseconds(),
-		WallTimeMS:    result.WallTime.Milliseconds(),
-		Memory:        result.Memory,
-		ProcessPeak:   result.ProcessPeak,
-		Stderr:        truncateDiagnostic(result.Stderr),
-		Error:         truncateDiagnostic([]byte(result.Error)),
+		ID:                   id,
+		SandboxStatus:        string(result.Status),
+		TimeMS:               result.CPUTime.Milliseconds(),
+		WallTimeMS:           result.WallTime.Milliseconds(),
+		Memory:               result.Memory,
+		ProcessPeak:          result.ProcessPeak,
+		MemoryEstimated:      result.MemoryEstimated,
+		ProcessPeakEstimated: result.ProcessPeakEstimated,
+		Stderr:               truncateDiagnostic(result.Stderr),
+		Error:                truncateDiagnostic([]byte(result.Error)),
 	}
 	switch result.Status {
 	case sandbox.StatusNormal:

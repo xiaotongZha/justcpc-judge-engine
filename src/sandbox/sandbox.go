@@ -107,10 +107,14 @@ type Result struct {
 	WallTime    time.Duration
 	Memory      uint64
 	ProcessPeak uint64
-	Stdout      []byte
-	Stderr      []byte
-	Files       []OutputFile
-	Error       string
+	// Estimated peaks use periodic current-counter samples on older kernels;
+	// Memory additionally includes the process's exit-time maximum RSS.
+	MemoryEstimated      bool
+	ProcessPeakEstimated bool
+	Stdout               []byte
+	Stderr               []byte
+	Files                []OutputFile
+	Error                string
 }
 
 // Config identifies deployment-owned resources. CgroupRoot must be a

@@ -13,7 +13,11 @@ import (
 // taskCgroup is deliberately small. The deployment gives the engine a
 // delegated v2 parent, so this code never moves unrelated host processes.
 type taskCgroup struct {
-	path string
+	path            string
+	sampleMemory    bool
+	sampleProcesses bool
+	memoryPeak      uint64
+	processPeak     uint64
 }
 
 // CurrentCgroupRoot returns the cgroup v2 directory of the current process.
@@ -90,9 +94,7 @@ func createTaskCgroup(root string, limit Limit) (*taskCgroup, error) {
 		cg.destroy()
 		return nil, fmt.Errorf("set memory.max: %w", err)
 	}
-	// A contest memory limit must not be bypassed by moving anonymous pages to
-	// swap. memory.swap.max exists on normal cgroup v2 Linux kernels; older WSL
-	// kernels omit it and are rejected by the integration test instead.
+	// Disable swap when the kernel exposes per-cgroup swap control.
 	if _, err := os.Stat(filepath.Join(path, "memory.swap.max")); err == nil {
 		if err := cg.writeUint("memory.swap.max", 0); err != nil {
 			cg.destroy()
@@ -111,11 +113,63 @@ func createTaskCgroup(root string, limit Limit) (*taskCgroup, error) {
 		cg.destroy()
 		return nil, fmt.Errorf("set memory.oom.group: %w", err)
 	}
+	if err := cg.detectPeakCounters(); err != nil {
+		cg.destroy()
+		return nil, err
+	}
 	return cg, nil
 }
 
 func (c *taskCgroup) addProcess(pid int) error {
-	return os.WriteFile(filepath.Join(c.path, "cgroup.procs"), []byte(strconv.Itoa(pid)), 0644)
+	if err := os.WriteFile(filepath.Join(c.path, "cgroup.procs"), []byte(strconv.Itoa(pid)), 0644); err != nil {
+		return err
+	}
+	// Capture the blocked init before allowing even a very short task to exit.
+	return c.sampleUsage()
+}
+
+// Only absent peak counters trigger compatibility sampling. Permission errors
+// and malformed statistics remain system errors, rather than hiding host faults.
+func (c *taskCgroup) detectPeakCounters() error {
+	for _, counter := range []struct {
+		name     string
+		sampling *bool
+	}{
+		{"memory.peak", &c.sampleMemory},
+		{"pids.peak", &c.sampleProcesses},
+	} {
+		_, err := c.readUint(counter.name)
+		if os.IsNotExist(err) {
+			*counter.sampling = true
+		} else if err != nil {
+			return fmt.Errorf("read %s: %w", counter.name, err)
+		}
+	}
+	return c.sampleUsage()
+}
+
+// Called by the task's waiting goroutine, with no concurrent access to peaks.
+// Linux 5.15 has current counters but no memory.peak or pids.peak. Samples are
+// lower-bound estimates; the kernel's memory.max and pids.max still enforce limits.
+func (c *taskCgroup) sampleUsage() error {
+	for _, counter := range []struct {
+		name     string
+		sampling bool
+		peak     *uint64
+	}{
+		{"memory.current", c.sampleMemory, &c.memoryPeak},
+		{"pids.current", c.sampleProcesses, &c.processPeak},
+	} {
+		if !counter.sampling {
+			continue
+		}
+		value, err := c.readUint(counter.name)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", counter.name, err)
+		}
+		*counter.peak = max(*counter.peak, value)
+	}
+	return nil
 }
 
 func (c *taskCgroup) usage() (time.Duration, uint64, uint64, error) {
@@ -123,13 +177,21 @@ func (c *taskCgroup) usage() (time.Duration, uint64, uint64, error) {
 	if err != nil {
 		return 0, 0, 0, err
 	}
-	memory, err := c.readUint("memory.peak")
-	if err != nil {
+	if err := c.sampleUsage(); err != nil {
 		return 0, 0, 0, err
 	}
-	processes, err := c.readUint("pids.peak")
-	if err != nil {
-		return 0, 0, 0, err
+	memory, processes := c.memoryPeak, c.processPeak
+	if !c.sampleMemory {
+		memory, err = c.readUint("memory.peak")
+		if err != nil {
+			return 0, 0, 0, err
+		}
+	}
+	if !c.sampleProcesses {
+		processes, err = c.readUint("pids.peak")
+		if err != nil {
+			return 0, 0, 0, err
+		}
 	}
 	return cpu, memory, processes, nil
 }

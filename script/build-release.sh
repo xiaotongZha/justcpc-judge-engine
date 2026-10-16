@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 if (($#)); then
-    [[ "$1" == "--help" && $# == 1 ]] && { printf 'Usage: VERSION=0.2.0 ./script/build-release.sh\n'; exit 0; }
-    printf 'Usage: VERSION=0.2.0 ./script/build-release.sh\n' >&2; exit 2
+    [[ "$1" == "--help" && $# == 1 ]] && { printf 'Usage: VERSION=0.2.1 ./script/build-release.sh\n'; exit 0; }
+    printf 'Usage: VERSION=0.2.1 ./script/build-release.sh\n' >&2; exit 2
 fi
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_dir="$(cd -- "$script_dir/.." && pwd)"
-version="${VERSION:-0.2.0}"
+version="${VERSION:-0.2.1}"
 [[ "$version" =~ ^[[:alnum:]][[:alnum:]._-]*$ ]] || { printf 'Invalid VERSION.\n' >&2; exit 2; }
 for tool in go tar sha256sum; do
     command -v "$tool" >/dev/null 2>&1 || { printf 'Missing build tool: %s\n' "$tool" >&2; exit 1; }

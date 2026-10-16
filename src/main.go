@@ -109,6 +109,9 @@ func main() {
 	if result.Status != sandbox.StatusNormal || result.ExitCode != 0 {
 		log.Fatalf("sandbox startup check failed: status=%s exit=%d error=%s stderr=%s\nOn Ubuntu with AppArmor user namespace restrictions, run sudo ./script/setup-apparmor.sh, then retry script/run-local.sh --check. For other runtime or host-policy failures, see README: startup troubleshooting.", result.Status, result.ExitCode, result.Error, result.Stderr)
 	}
+	if result.MemoryEstimated || result.ProcessPeakEstimated {
+		log.Printf("cgroup compatibility mode: memory_estimated=%t process_peak_estimated=%t; missing kernel peak counters use 20ms samples (memory also uses maximum RSS); brief peaks may be missed; CPU accounting and cgroup hard limits remain enabled", result.MemoryEstimated, result.ProcessPeakEstimated)
+	}
 	selection, err := capacity.Select(cfg.Workers, capacity.Detect())
 	if err != nil {
 		log.Fatalf("select execution capacity: %v", err)

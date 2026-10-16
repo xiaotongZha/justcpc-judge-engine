@@ -386,6 +386,16 @@ func waitForTask(
 			stderrExceeded = nil
 			_ = command.Process.Kill()
 		case <-ticker.C:
+			if cg != nil {
+				if err := cg.sampleUsage(); err != nil {
+					_ = command.Process.Kill()
+					waitErr := <-done
+					result := completedResult(command, cg, started, waitErr, false, false, false)
+					result.Status = StatusSystemError
+					result.Error = fmt.Sprintf("sample cgroup usage: %v", err)
+					return result
+				}
+			}
 			if stdoutFileReachedLimit(stdoutFile, limit.OutputSize) {
 				outputExceeded = true
 				_ = command.Process.Kill()
@@ -445,8 +455,16 @@ func completedResult(command *exec.Cmd, cg *taskCgroup, started time.Time, waitE
 			return result
 		}
 		result.CPUTime = cpu
-		result.Memory = memory
+		if cg.sampleMemory {
+			// Maxrss can catch a short-lived allocation between cgroup samples.
+			// It is not an aggregate process-tree peak, so this remains estimated.
+			result.Memory = max(result.Memory, memory)
+		} else {
+			result.Memory = memory
+		}
 		result.ProcessPeak = processes
+		result.MemoryEstimated = cg.sampleMemory
+		result.ProcessPeakEstimated = cg.sampleProcesses
 		if oom, err := cg.oomKilled(); err != nil {
 			result.Error = fmt.Sprintf("read cgroup memory events: %v", err)
 			return result

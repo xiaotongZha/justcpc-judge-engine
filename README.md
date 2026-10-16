@@ -11,7 +11,7 @@
 
 ## 运行环境
 
-- Linux（amd64），内核支持 cgroup v2。
+- Linux（amd64），内核 5.15+，启用 cgroup v2；工作目录所在挂载需允许执行程序（不能为 `noexec`）。
 - 通过 systemd 服务运行时需 `Delegate=yes`（见 `script/register-service.sh`）；本地调试用 `script/run-local.sh`。
 - 宿主机安装 g++、完整 JDK（包含 javac）和 Python 3，命令位于 `/usr/bin/`。默认直接使用这些工具链，**无需下载或制作 RootFS**。
 - 内核和宿主机策略需要允许**引擎可执行文件**创建非特权 user namespace。Ubuntu 24.04 的 AppArmor 限制需要执行下文的首次配置；仅有 cgroup 委托不足以运行沙盒。默认挂载布局针对 Debian/Ubuntu 的系统工具链；其他发行版应核对工具链路径及配置位置。
@@ -186,7 +186,9 @@ go build -o bin/justcpc-judge-engine ./src
 3. 在新的 tmpfs 根目录中只读绑定宿主机 `/usr`、`/bin`、`/lib`、`/lib64`，保留 merged-/usr 的符号链接；单独提供动态链接器配置、`/etc/alternatives` 和 `/etc/java-*`，不挂载整个 `/etc`、`/home` 或题库。
 4. 挂载任务独立的可写 `/w`、私有 `/tmp`、新 `/proc` 和最小 `/dev`，用 `pivot_root` 切换根目录并卸载旧根目录。
 5. 父进程把子进程加入任务 cgroup 后放行；子进程设置 rlimit、丢弃 capabilities、安装 seccomp，再执行编译器或选手程序。
-6. 父进程每 20 ms 检查累计 CPU 时间及墙钟时间，读取 cgroup 内存峰值、OOM 等信息，收集输出后清理任务资源。
+6. 父进程每 20 ms 检查累计 CPU 时间及墙钟时间，读取资源统计与 OOM 信息，收集输出后清理任务资源。
+
+新内核使用 `memory.peak`、`pids.peak`；5.15 等缺少峰值接口的内核自动采样 `memory.current`、`pids.current`，内存同时参考退出时最大 RSS。CPU 仍按 cgroup 累计时间统计，内存和线程硬限制不变。采样可能漏掉短暂峰值，RSS 与 cgroup 内存统计口径也不同；日志及测试点响应中的 `memory_estimated`、`process_peak_estimated` 标明近似统计。20 ms 是轮询间隔，不是重负载下的误差上界。
 
 运行库挂载负责提供文件视图，cgroup 负责资源限制与统计，namespace 负责隔离；三者各自的实现都保留在源码中。定位入口为 `src/sandbox/container.go`，挂载布局在 `runtime.go`，切根和初始化在 `init.go`，资源监控在 `cgroup.go`。
 
