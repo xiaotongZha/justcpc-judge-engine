@@ -2,6 +2,8 @@
 
 ## 下载安装
 
+[GitHub 下载](https://github.com/xiaotongZha/justcpc-judge-engine/releases/tag/v1.0.0) · [Gitee 下载](https://gitee.com/zhaxt/justcpc-judge-engine/releases/tag/v1.0.0)
+
 Ubuntu 22.04/24.04、amd64、Linux 5.15+、systemd、cgroup v2；与 OJ 使用同一服务器、同一普通账号。无需 Go、Node.js 或 RootFS。
 
 v0.2.1 起兼容 5.15：缺少原生峰值接口时使用近似统计，资源硬限制仍生效。需允许 namespace，并确保工作目录未挂载为 `noexec`。
@@ -12,8 +14,8 @@ sudo apt-get install -y curl ca-certificates g++ openjdk-17-jdk-headless python3
 mkdir -p ~/justcpc/judge-engine
 cd ~/justcpc/judge-engine
 
-release_url=https://github.com/xiaotongZha/justcpc-judge-engine/releases/download/v0.2.1
-archive=JustCPC-Judge-0.2.1-linux-amd64.tar.gz
+release_url=https://github.com/xiaotongZha/justcpc-judge-engine/releases/download/v1.0.0
+archive=JustCPC-Judge-1.0.0-linux-amd64.tar.gz
 curl -fLO "$release_url/$archive"
 curl -fLO "$release_url/$archive.sha256"
 sha256sum -c "$archive.sha256" && tar -xzf "$archive" --strip-components=1
@@ -39,4 +41,4 @@ sudo systemctl start justcpc-judge-engine
 
 ## 从源码构建
 
-构建机安装 Go 1.26.5+，在仓库根目录执行 `./script/build-release.sh`。产物在 `release/`；指定版本用 `VERSION=0.2.2 ./script/build-release.sh`。
+构建机安装 Go 1.26.5+，在仓库根目录执行 `./script/build-release.sh`。产物在 `release/`；指定版本用 `VERSION=1.0.0 ./script/build-release.sh`。
