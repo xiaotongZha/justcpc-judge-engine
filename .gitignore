@@ -5,3 +5,7 @@
 /release/
 /work/
 /test/
+
+__pycache__/
+
+/build/
